@@ -1,7 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:cloud_firestore/cloud_firestore.dart'; // Firebase
 import 'database.dart';
-import 'admin_login.dart'; // To navigate to admin
+import 'admin_login.dart';
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
@@ -15,14 +16,13 @@ class _HomeScreenState extends State<HomeScreen>
   final TextEditingController _tagController = TextEditingController();
   final LaundryDatabase db = LaundryDatabase();
 
-  String _statusMessage = "";
-  Color _statusColor = Colors.transparent;
-  bool _showStatus = false;
+  String _searchedTag = "";
   late AnimationController _iconController;
 
   @override
   void initState() {
     super.initState();
+    // PULSE ANIMATION RESTORED
     _iconController = AnimationController(
       vsync: this,
       duration: const Duration(seconds: 2),
@@ -39,20 +39,9 @@ class _HomeScreenState extends State<HomeScreen>
 
   void _checkStatus() {
     HapticFeedback.mediumImpact();
-    String tag = _tagController.text.trim();
-    if (tag.isEmpty) return;
-
-    bool isReady = db.isReady(tag);
-
+    // Trigger Firebase search
     setState(() {
-      _showStatus = true;
-      if (isReady) {
-        _statusMessage = "✅ Ready for Pickup!";
-        _statusColor = const Color(0xFF00C853);
-      } else {
-        _statusMessage = "⏳ Still Washing...";
-        _statusColor = const Color(0xFFFFAB00);
-      }
+      _searchedTag = _tagController.text.trim();
     });
   }
 
@@ -61,6 +50,7 @@ class _HomeScreenState extends State<HomeScreen>
     return Scaffold(
       body: Stack(
         children: [
+          // BACKGROUND BLOB RESTORED
           Positioned(
             top: -100,
             right: -100,
@@ -80,12 +70,14 @@ class _HomeScreenState extends State<HomeScreen>
               ),
             ),
           ),
+
           SafeArea(
             child: SingleChildScrollView(
               padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 20),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.center,
                 children: [
+                  // Admin Login Icon
                   Align(
                     alignment: Alignment.centerRight,
                     child: IconButton(
@@ -97,7 +89,10 @@ class _HomeScreenState extends State<HomeScreen>
                               builder: (_) => const AdminLoginScreen())),
                     ),
                   ),
+
                   const SizedBox(height: 20),
+
+                  // ANIMATED HERO ICON RESTORED
                   ScaleTransition(
                     scale: _iconController,
                     child: Container(
@@ -116,6 +111,7 @@ class _HomeScreenState extends State<HomeScreen>
                           size: 60, color: Color(0xFF6C63FF)),
                     ),
                   ),
+
                   const SizedBox(height: 30),
                   const Text("Laundry Tracker",
                       style: TextStyle(
@@ -125,7 +121,10 @@ class _HomeScreenState extends State<HomeScreen>
                   const SizedBox(height: 8),
                   Text("Enter your tag number to check status",
                       style: TextStyle(fontSize: 16, color: Colors.grey[600])),
+
                   const SizedBox(height: 40),
+
+                  // CARD CONTAINER RESTORED
                   Container(
                     padding: const EdgeInsets.all(25),
                     decoration: BoxDecoration(
@@ -155,6 +154,8 @@ class _HomeScreenState extends State<HomeScreen>
                           ),
                         ),
                         const SizedBox(height: 20),
+
+                        // GRADIENT BUTTON RESTORED
                         SizedBox(
                           width: double.infinity,
                           height: 55,
@@ -192,33 +193,65 @@ class _HomeScreenState extends State<HomeScreen>
                       ],
                     ),
                   ),
+
                   const SizedBox(height: 30),
-                  AnimatedOpacity(
-                    opacity: _showStatus ? 1.0 : 0.0,
-                    duration: const Duration(milliseconds: 500),
-                    child: Container(
-                      padding: const EdgeInsets.symmetric(
-                          horizontal: 24, vertical: 16),
-                      decoration: BoxDecoration(
-                        color: _statusColor.withOpacity(0.1),
-                        borderRadius: BorderRadius.circular(16),
-                        border:
-                            Border.all(color: _statusColor.withOpacity(0.5)),
-                      ),
-                      child: Row(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          Icon(Icons.info_outline_rounded, color: _statusColor),
-                          const SizedBox(width: 12),
-                          Text(_statusMessage,
-                              style: TextStyle(
-                                  fontSize: 16,
-                                  fontWeight: FontWeight.bold,
-                                  color: _statusColor)),
-                        ],
-                      ),
+
+                  // LIVE STATUS RESULT (STYLED EXACTLY LIKE BEFORE)
+                  if (_searchedTag.isNotEmpty)
+                    StreamBuilder<QuerySnapshot>(
+                      stream: db.getStudentStatus(_searchedTag),
+                      builder: (context, snapshot) {
+                        if (snapshot.connectionState ==
+                            ConnectionState.waiting) {
+                          return const CircularProgressIndicator();
+                        }
+
+                        // Logic: Is it ready in the cloud?
+                        bool isReady = false;
+                        if (snapshot.hasData &&
+                            snapshot.data!.docs.isNotEmpty) {
+                          final doc = snapshot.data!.docs.first;
+                          isReady = doc['isReady'] == true;
+                        }
+
+                        // Colors based on status
+                        final statusColor = isReady
+                            ? const Color(0xFF00C853)
+                            : const Color(0xFFFFAB00);
+                        final statusMessage = isReady
+                            ? "✅ Ready for Pickup!"
+                            : "⏳ Still Washing...";
+
+                        // ANIMATED FADE IN RESTORED
+                        return AnimatedOpacity(
+                          opacity: 1.0,
+                          duration: const Duration(milliseconds: 500),
+                          child: Container(
+                            padding: const EdgeInsets.symmetric(
+                                horizontal: 24, vertical: 16),
+                            decoration: BoxDecoration(
+                              color: statusColor.withOpacity(0.1),
+                              borderRadius: BorderRadius.circular(16),
+                              border: Border.all(
+                                  color: statusColor.withOpacity(0.5)),
+                            ),
+                            child: Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                Icon(Icons.info_outline_rounded,
+                                    color: statusColor),
+                                const SizedBox(width: 12),
+                                Text(statusMessage,
+                                    style: TextStyle(
+                                        fontSize: 16,
+                                        fontWeight: FontWeight.bold,
+                                        color: statusColor)),
+                              ],
+                            ),
+                          ),
+                        );
+                      },
                     ),
-                  ),
                 ],
               ),
             ),

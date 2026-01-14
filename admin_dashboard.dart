@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-import 'database.dart'; // Import the database
+import 'package:cloud_firestore/cloud_firestore.dart'; // Firebase
+import 'database.dart';
 
 class AdminDashboard extends StatefulWidget {
   const AdminDashboard({super.key});
@@ -13,20 +14,21 @@ class _AdminDashboardState extends State<AdminDashboard> {
   final LaundryDatabase db = LaundryDatabase();
   final TextEditingController _addController = TextEditingController();
 
+  // Firebase Add Tag
   void _addTag() {
     if (_addController.text.isNotEmpty) {
       HapticFeedback.mediumImpact();
-      setState(() {
-        db.markAsReady(_addController.text);
-        _addController.clear();
-      });
+      db.addTag(_addController.text.trim()); // Save to Cloud
+
+      _addController.clear();
+      Navigator.pop(context); // Close sheet
+
       ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-        content: const Text("Tag added to Ready list!"),
+        content: const Text("Tag added to Cloud!"),
         backgroundColor: const Color(0xFF00C853),
         behavior: SnackBarBehavior.floating,
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
       ));
-      Navigator.pop(context); // Close bottom sheet
     }
   }
 
@@ -105,51 +107,75 @@ class _AdminDashboardState extends State<AdminDashboard> {
         label: const Text("Add Ready Tag",
             style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
       ),
-      body: ListView.builder(
-        padding: const EdgeInsets.all(20),
-        itemCount: db.readyTags.length,
-        itemBuilder: (context, index) {
-          final tag = db.readyTags[index];
-          return Dismissible(
-            key: Key(tag),
-            background: Container(
-              margin: const EdgeInsets.only(bottom: 16),
-              decoration: BoxDecoration(
-                  color: Colors.red[100],
-                  borderRadius: BorderRadius.circular(20)),
-              alignment: Alignment.centerRight,
-              padding: const EdgeInsets.only(right: 20),
-              child: const Icon(Icons.delete, color: Colors.red),
-            ),
-            onDismissed: (direction) {
-              setState(() => db.markAsCollected(tag));
-              ScaffoldMessenger.of(context).showSnackBar(
-                  SnackBar(content: Text("Tag #$tag marked as Collected")));
+
+      // LIVE LIST FROM FIREBASE
+      body: StreamBuilder<QuerySnapshot>(
+        stream: db.getFullHistory(),
+        builder: (context, snapshot) {
+          if (!snapshot.hasData)
+            return const Center(child: CircularProgressIndicator());
+
+          final docs = snapshot.data!.docs;
+          // Filter: Only show "Ready" tags
+          final readyDocs =
+              docs.where((doc) => doc['isReady'] == true).toList();
+
+          if (readyDocs.isEmpty) {
+            return Center(
+                child: Text("No active tags",
+                    style: TextStyle(color: Colors.grey[400])));
+          }
+
+          return ListView.builder(
+            padding: const EdgeInsets.all(20),
+            itemCount: readyDocs.length,
+            itemBuilder: (context, index) {
+              final doc = readyDocs[index];
+              final tag = doc['tag'];
+
+              // SWIPE ANIMATION RESTORED
+              return Dismissible(
+                key: Key(doc.id),
+                background: Container(
+                  margin: const EdgeInsets.only(bottom: 16),
+                  decoration: BoxDecoration(
+                      color: Colors.red[100],
+                      borderRadius: BorderRadius.circular(20)),
+                  alignment: Alignment.centerRight,
+                  padding: const EdgeInsets.only(right: 20),
+                  child: const Icon(Icons.delete, color: Colors.red),
+                ),
+                onDismissed: (direction) {
+                  db.markAsCollected(doc.id); // Update Cloud
+                  ScaffoldMessenger.of(context).showSnackBar(
+                      SnackBar(content: Text("Tag #$tag marked as Collected")));
+                },
+                child: Container(
+                  margin: const EdgeInsets.only(bottom: 16),
+                  decoration: BoxDecoration(
+                    color: Colors.white,
+                    borderRadius: BorderRadius.circular(20),
+                    border: Border.all(color: Colors.green.withOpacity(0.2)),
+                    boxShadow: [
+                      BoxShadow(
+                          color: Colors.green.withOpacity(0.05),
+                          blurRadius: 10,
+                          offset: const Offset(0, 4))
+                    ],
+                  ),
+                  child: ListTile(
+                    leading: const CircleAvatar(
+                        backgroundColor: Color(0xFFE8F5E9),
+                        child: Icon(Icons.check, color: Color(0xFF00C853))),
+                    title: Text("Tag #$tag",
+                        style: const TextStyle(
+                            fontWeight: FontWeight.bold, fontSize: 18)),
+                    subtitle: const Text("Ready for Pickup"),
+                    trailing: const Icon(Icons.drag_handle, color: Colors.grey),
+                  ),
+                ),
+              );
             },
-            child: Container(
-              margin: const EdgeInsets.only(bottom: 16),
-              decoration: BoxDecoration(
-                color: Colors.white,
-                borderRadius: BorderRadius.circular(20),
-                border: Border.all(color: Colors.green.withOpacity(0.2)),
-                boxShadow: [
-                  BoxShadow(
-                      color: Colors.green.withOpacity(0.05),
-                      blurRadius: 10,
-                      offset: const Offset(0, 4))
-                ],
-              ),
-              child: ListTile(
-                leading: const CircleAvatar(
-                    backgroundColor: Color(0xFFE8F5E9),
-                    child: Icon(Icons.check, color: Color(0xFF00C853))),
-                title: Text("Tag #$tag",
-                    style: const TextStyle(
-                        fontWeight: FontWeight.bold, fontSize: 18)),
-                subtitle: const Text("Ready for Pickup"),
-                trailing: const Icon(Icons.drag_handle, color: Colors.grey),
-              ),
-            ),
           );
         },
       ),

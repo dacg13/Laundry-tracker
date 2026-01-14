@@ -1,59 +1,40 @@
-import 'package:flutter/material.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
 
 class LaundryDatabase {
-  static final LaundryDatabase _instance = LaundryDatabase._internal();
-  factory LaundryDatabase() => _instance;
-  LaundryDatabase._internal();
+  // Access the 'laundry' collection in your cloud database
+  final CollectionReference laundryCollection =
+      FirebaseFirestore.instance.collection('laundry');
 
-  // Active "Ready" Tags
-  List<String> readyTags = ["101", "555", "888"];
-
-  // History Data
-  List<Map<String, dynamic>> history = [
-    {
-      "tag": "101",
-      "date": "Today, 10:30 AM",
-      "status": "Ready",
-      "color": Colors.green
-    },
-    {
-      "tag": "099",
-      "date": "Yesterday",
-      "status": "Collected",
-      "color": Colors.grey
-    },
-    {
-      "tag": "045",
-      "date": "Oct 24",
-      "status": "Collected",
-      "color": Colors.grey
-    },
-  ];
-
-  void markAsReady(String tag) {
-    if (!readyTags.contains(tag)) {
-      readyTags.insert(0, tag); // Add to top
-      history.insert(0, {
-        "tag": tag,
-        "date": "Just Now",
-        "status": "Ready",
-        "color": Colors.green
+  // ADMIN: Add a new tag to the cloud
+  Future<void> addTag(String tag) async {
+    // Check if it already exists to prevent duplicates
+    final snapshot = await laundryCollection.where('tag', isEqualTo: tag).get();
+    if (snapshot.docs.isEmpty) {
+      await laundryCollection.add({
+        'tag': tag,
+        'status': 'Ready',
+        'isReady': true,
+        'timestamp': FieldValue.serverTimestamp(), // Saves the exact time
+        'dateString': "Today",
       });
     }
   }
 
-  void markAsCollected(String tag) {
-    if (readyTags.contains(tag)) {
-      readyTags.remove(tag);
-      for (var item in history) {
-        if (item["tag"] == tag && item["status"] == "Ready") {
-          item["status"] = "Collected";
-          item["color"] = Colors.grey;
-          break;
-        }
-      }
-    }
+  // ADMIN: Mark as Collected (Update the cloud status)
+  Future<void> markAsCollected(String docId) async {
+    await laundryCollection.doc(docId).update({
+      'status': 'Collected',
+      'isReady': false,
+    });
   }
 
-  bool isReady(String tag) => readyTags.contains(tag);
+  // STUDENT: Listen for their specific tag (Live Stream)
+  Stream<QuerySnapshot> getStudentStatus(String tag) {
+    return laundryCollection.where('tag', isEqualTo: tag).snapshots();
+  }
+
+  // ADMIN/HISTORY: Listen to the whole list (Live Stream)
+  Stream<QuerySnapshot> getFullHistory() {
+    return laundryCollection.orderBy('timestamp', descending: true).snapshots();
+  }
 }
